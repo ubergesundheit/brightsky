@@ -10,6 +10,8 @@ services:
       - ./brightsky-data:/var/lib/postgresql/data
   brightsky:
     build: .
+    depends_on:
+      - database
     environment:
       DATABASE_URL: postgres://postgres:password@database
 
