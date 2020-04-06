@@ -14,3 +14,9 @@ Wetterdienst.
 | `wind_direction`     | °       | Wind direction, dominant during last hour
 | `pressure_msl`       | Pa      | Barometric pressure at mean sea level
 | `sunshine`           | s       | Sunshine duration during last hour
+
+## Running in containers
+
+- `docker-compose up -d database` to start a local database. It will store its data in a local directory
+- `docker-compose run --rm brightsky migrate` to apply database migrations
+- `docker-compose run --rm brightsky ???`

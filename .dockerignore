@@ -1,8 +1,12 @@
 .brightsky_cache
 .cache
-.env
 .tox
+tox.ini
 .venv
 *.egg-info
 *.pyc
+tests
+.github
+.git
+Dockerfile
 brightsky-data

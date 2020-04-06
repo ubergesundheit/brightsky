@@ -1,0 +1,15 @@
+version: "2.4"
+
+services:
+  database:
+    image: postgis/postgis:12-3.0-alpine
+    shm_size: 256M
+    environment:
+      POSTGRES_PASSWORD: password
+    volumes:
+      - ./brightsky-data:/var/lib/postgresql/data
+  brightsky:
+    build: .
+    environment:
+      DATABASE_URL: postgres://postgres:password@database
+
