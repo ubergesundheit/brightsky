@@ -10,15 +10,19 @@ import dateutil.parser
 from dateutil.tz import tzutc
 from parsel import Selector
 
+from brightsky.db import get_connection
 from brightsky.utils import cache_path, celsius_to_kelvin, download, kmh_to_ms
-
-
-logger = logging.getLogger(__name__)
 
 
 class Parser:
 
     DEFAULT_URL = None
+
+    @property
+    def logger(self):
+        if not hasattr(self, '_logger'):
+            self._logger = logging.getLogger(self.__class__.__name__)
+        return self._logger
 
     def __init__(self, path=None, url=None):
         self.url = url or self.DEFAULT_URL
@@ -27,6 +31,7 @@ class Parser:
             self.path = cache_path(self.url)
 
     def download(self):
+        self.logger.info('Downloading "%s" to "%s"', self.url, self.path)
         download(self.url, self.path)
 
 
@@ -46,16 +51,18 @@ class MOSMIXParser(Parser):
     }
 
     def parse(self):
+        self.logger.info("Parsing %s", self.path)
         sel = self.get_selector()
         timestamps = self.parse_timestamps(sel)
         source = self.parse_source(sel)
-        logger.debug(
+        self.logger.debug(
             'Got %d timestamps for source %s', len(timestamps), source)
         station_selectors = sel.css('Placemark')
         for i, station_sel in enumerate(station_selectors):
-            logger.debug(
+            self.logger.debug(
                 'Parsing station %d / %d', i+1, len(station_selectors))
-            yield from self.parse_station(station_sel, timestamps, source)
+            records = self.parse_station(station_sel, timestamps, source)
+            yield from self.sanitize_records(records)
 
     def get_selector(self):
         with zipfile.ZipFile(self.path) as zf:
@@ -98,10 +105,18 @@ class MOSMIXParser(Parser):
             'height': float(height),
         }
         # Turn dict of lists into list of dicts
-        yield from (
+        return (
             {**base_record, **dict(zip(records, row))}
             for row in zip(*records.values())
         )
+
+    def sanitize_records(self, records):
+        for r in records:
+            if r['precipitation'] and r['precipitation'] < 0:
+                self.logger.warning(
+                    "Ignoring negative precipitation value: %s", r)
+                r['precipitation'] = None
+            yield r
 
 
 class CurrentObservationsParser(Parser):
@@ -126,10 +141,12 @@ class CurrentObservationsParser(Parser):
         'sunshine': 60,
     }
 
-    def parse(self, lat, lon, height):
+    def parse(self, lat=None, lon=None, height=None):
         with open(self.path) as f:
             reader = csv.DictReader(f, delimiter=';')
-            station_id = next(reader)[self.DATE_COLUMN]
+            station_id = next(reader)[self.DATE_COLUMN].rstrip('_')
+            if lat is None or lon is None or height is None:
+                lat, lon, height = self.load_location(station_id)
             # Skip row with German header titles
             next(reader)
             for row in reader:
@@ -163,6 +180,28 @@ class CurrentObservationsParser(Parser):
                 record[element] *= factor
         record['temperature'] = celsius_to_kelvin(record['temperature'])
         record['wind_speed'] = kmh_to_ms(record['wind_speed'])
+
+    def load_location(self, station_id):
+        with get_connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    SELECT
+                        ST_Y(location::geometry) AS lat,
+                        ST_X(location::geometry) AS lon,
+                        height
+                    FROM weather
+                    WHERE observation_type = %s AND station_id = %s
+                    ORDER BY timestamp DESC
+                    LIMIT 1
+                    """,
+                    ('forecast', station_id),
+                )
+                row = cur.fetchone()
+                if not row:
+                    raise ValueError(
+                        f'Unable to find location for station {station_id}')
+                return row
 
 
 class ObservationsParser(Parser):
@@ -299,3 +338,18 @@ class PressureObservationsParser(ObservationsParser):
         # hPa to Pa
         'pressure_msl': 100,
     }
+
+
+def get_parser(filename):
+    parsers = {
+        r'MOSMIX_S_LATEST_240\.kmz$': MOSMIXParser,
+        r'\w{5}-BEOB\.csv$': CurrentObservationsParser,
+        'stundenwerte_FF_': WindObservationsParser,
+        'stundenwerte_P0_': PressureObservationsParser,
+        'stundenwerte_RR_': PrecipitationObservationsParser,
+        'stundenwerte_SD_': SunshineObservationsParser,
+        'stundenwerte_TU_': TemperatureObservationsParser,
+    }
+    for pattern, parser in parsers.items():
+        if re.match(pattern, filename):
+            return parser

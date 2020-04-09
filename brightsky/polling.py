@@ -7,9 +7,7 @@ from dateutil.tz import tzutc
 from parsel import Selector
 
 from brightsky.db import get_connection
-
-
-logger = logging.getLogger(__name__)
+from brightsky.parsers import get_parser
 
 
 class DWDPoller:
@@ -24,17 +22,15 @@ class DWDPoller:
         for subfolder in [
             'air_temperature', 'precipitation', 'pressure', 'sun', 'wind']
     ]
-    parsers = {
-        r'MOSMIX_S_LATEST_240\.kmz$': 'MOSMIXParser',
-        r'\w{5}-BEOB\.csv$': 'CurrentObservationsParser',
-        'stundenwerte_FF_': 'WindObservationsParser',
-        'stundenwerte_P0_': 'PressureObservationsParser',
-        'stundenwerte_RR_': 'PrecipitationObservationsParser',
-        'stundenwerte_SD_': 'SunshineObservationsParser',
-        'stundenwerte_TU_': 'TemperatureObservationsParser',
-    }
+
+    @property
+    def logger(self):
+        if not hasattr(self, '_logger'):
+            self._logger = logging.getLogger(self.__class__.__name__)
+        return self._logger
 
     def poll(self):
+        self.logger.info("Polling for updated files")
         with get_connection() as conn:
             with conn.cursor() as cur:
                 cur.execute('SELECT * FROM parsed_files')
@@ -50,7 +46,7 @@ class DWDPoller:
                     yield file_info
 
     def poll_url(self, url):
-        logger.debug("Loading %s", url)
+        self.logger.debug("Loading %s", url)
         resp = requests.get(url)
         resp.raise_for_status()
         return self.parse(url, resp.text)
@@ -74,22 +70,17 @@ class DWDPoller:
                 last_modified = dateutil.parser.parse(
                     match.group(1)).replace(tzinfo=tzutc())
                 file_size = int(match.group(2))
-                parser = self.get_parser(link)
+                parser = get_parser(link)
                 if parser:
                     files.append({
                         'url': link_url,
-                        'parser': parser,
+                        'parser': parser.__name__,
                         'last_modified': last_modified,
                         'file_size': file_size,
                     })
-        logger.info(
+        self.logger.info(
             "Found %d directories and %d files at %s",
             len(directories), len(files), url)
         yield from files
         for dir_url in directories:
             yield from self.poll_url(dir_url)
-
-    def get_parser(self, filename):
-        for pattern, parser in self.parsers.items():
-            if re.match(pattern, filename):
-                return parser
