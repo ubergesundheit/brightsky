@@ -16,6 +16,7 @@ services:
     build: .
     depends_on:
       - database
+      - redis
     environment:
       DATABASE_URL: postgres://postgres:password@database
       REDIS_URL: redis://redis/
