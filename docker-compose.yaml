@@ -8,10 +8,15 @@ services:
       POSTGRES_PASSWORD: password
     volumes:
       - ./brightsky-data:/var/lib/postgresql/data
+    restart: always
+  redis:
+    image: redis:5-alpine
+    restart: always
   brightsky:
     build: .
     depends_on:
       - database
     environment:
       DATABASE_URL: postgres://postgres:password@database
+      REDIS_URL: redis://redis/
 
