@@ -19,5 +19,5 @@ Wetterdienst.
 
 - `docker-compose up -d database` to start a local database. It will store its data in a local directory
 - `docker-compose run --rm brightsky migrate` to apply database migrations
-- `docker-compose run --rm brightsky poll --enqueue` to fill up the worker queue
-- `docker-compose run --rm -d brightsky work` to start workers in background
+- ~`docker-compose run --rm brightsky poll --enqueue` to fill up the worker queue~
+- `docker-compose run --rm -d brightsky work` to start workers in background. Polling and parsing will be done in parallel.
