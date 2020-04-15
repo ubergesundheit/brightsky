@@ -18,6 +18,6 @@ services:
       - database
       - redis
     environment:
-      DATABASE_URL: postgres://postgres:password@database
-      REDIS_URL: redis://redis/
+      BRIGHTSKY_DATABASE_URL: postgres://postgres:password@database
+      BRIGHTSKY_REDIS_URL: redis://redis/
 
