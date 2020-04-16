@@ -19,8 +19,8 @@ def test_mosmix_parser(data_dir):
         'observation_type': 'forecast',
         'source': 'MOSMIX:2020-03-13T09:00:00.000Z',
         'station_id': '01028',
-        'lat': 19.02,
-        'lon': 74.52,
+        'lat': 74.52,
+        'lon': 19.02,
         'height': 16.,
         'timestamp': datetime.datetime(2020, 3, 13, 10, 0, tzinfo=tzutc()),
         'temperature': 260.45,
@@ -34,8 +34,8 @@ def test_mosmix_parser(data_dir):
         'observation_type': 'forecast',
         'source': 'MOSMIX:2020-03-13T09:00:00.000Z',
         'station_id': '01028',
-        'lat': 19.02,
-        'lon': 74.52,
+        'lat': 74.52,
+        'lon': 19.02,
         'height': 16.,
         'timestamp': datetime.datetime(2020, 3, 23, 9, 0, tzinfo=tzutc()),
         'temperature': 267.15,
@@ -123,20 +123,37 @@ def test_observations_parser_handles_location_changes(data_dir):
         {'lat': 13.0, 'lon': 50.0, 'height': 345.0}, records[-1])
 
 
-def test_observations_parser_skips_file_if_ends_before_cutoff(data_dir):
+def test_observations_parser_skips_file_if_out_of_range(data_dir):
     p = PressureObservationsParser(
-        path=data_dir / 'observations_19950901_20050817_hist.zip')
-    assert p.should_skip()
+        path=data_dir / 'observations_19950901_20150817_hist.zip')
+    assert not p.should_skip()
+    with overridden_settings(
+        MIN_DATE=datetime.datetime(2016, 1, 1, tzinfo=tzutc()),
+    ):
+        assert p.should_skip()
+    with overridden_settings(
+        MAX_DATE=datetime.datetime(1995, 1, 1, tzinfo=tzutc()),
+    ):
+        assert p.should_skip()
 
 
 def test_observations_parser_skips_rows_if_before_cutoff(data_dir):
     p = WindObservationsParser(
         path=data_dir / 'observations_recent_FF_akt.zip')
     with overridden_settings(
-        DATE_CUTOFF=datetime.datetime(2019, 1, 1, tzinfo=tzutc()),
+        MIN_DATE=datetime.datetime(2019, 1, 1, tzinfo=tzutc()),
     ):
         records = list(p.parse())
         assert len(records) == 5
+        assert records[0]['timestamp'] == datetime.datetime(
+            2019, 4, 20, 21, tzinfo=tzutc())
+    with overridden_settings(
+        MAX_DATE=datetime.datetime(2019, 1, 1, tzinfo=tzutc()),
+    ):
+        records = list(p.parse())
+        assert len(records) == 5
+        assert records[-1]['timestamp'] == datetime.datetime(
+            2018, 9, 15, 4, tzinfo=tzutc())
 
 
 def _test_parser(cls, path, first, last, count=10, first_idx=0, last_idx=-1):
