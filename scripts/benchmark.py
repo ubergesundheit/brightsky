@@ -4,7 +4,7 @@ import datetime
 import logging
 import random
 import time
-from concurrent.futures import as_completed, ThreadPoolExecutor
+from concurrent.futures import FIRST_EXCEPTION, ThreadPoolExecutor, wait
 from contextlib import contextmanager
 from multiprocessing import cpu_count
 
@@ -62,8 +62,9 @@ def build():
             futures = [
                 executor.submit(tasks.parse, url=file_info['url'], export=True)
                 for file_info in file_infos]
-            for f in as_completed(futures):
-                # Make sure we re-raise any occured exceptions
+            finished_futures, _ = wait(futures, return_when=FIRST_EXCEPTION)
+            for f in finished_futures:
+                # Re-raise any occured exceptions
                 f.result()
 
 
@@ -76,7 +77,7 @@ def db_size():
                 'SELECT pg_database_size(%s)', (db_name,))
             db_size = cur.fetchone()
             table_sizes = {}
-            for table in ['weather']:
+            for table in ['weather', 'sources']:
                 cur.execute('SELECT pg_total_relation_size(%s)', (table,))
                 table_sizes[table] = cur.fetchone()[0]
     click.echo('Total database size:\n%6d MB' % (db_size[0] / 1024 / 1024))
